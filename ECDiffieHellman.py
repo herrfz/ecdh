@@ -26,24 +26,23 @@ class ECDH(object):
 
         self.basepoint = (self.params['gx'], self.params['gy'])
 
-        # just for testing in __main__ below, not to be used in a protocol!
-        self.__private_key__ = self.gen_private_key()
-        self.__public_key__ = self.gen_public_key(self.__private_key__)
+        self.gen_private_key()
+        self.gen_public_key()
 
 
     def gen_private_key(self):
         """
         Generate a private key.
         """
-        return randint(1, self.params['n'] - 1)
+        self.private_key = randint(1, self.params['n'] - 1)
 
 
-    def gen_public_key(self, private_key):
+    def gen_public_key(self):
         """
         Generate a public key.
         """
-        return ec.mulp(self.params['a'], self.params['b'], self.params['p'], 
-            self.basepoint, private_key)
+        self.public_key = ec.mulp(self.params['a'], self.params['b'], 
+            self.params['p'], self.basepoint, self.private_key)
 
 
     def check_public_key(self, other_key):
@@ -59,26 +58,24 @@ class ECDH(object):
         return False
 
 
-    def gen_secret(self, private_key, other_key):
+    def gen_secret(self, other_key):
         """
         Check to make sure the public key is valid, then combine it with the
         private key to generate a shared secret.
         """
         if self.check_public_key(other_key):
-            shared_secret = ec.mulp(self.params['a'], self.params['b'], 
-                self.params['p'], other_key, private_key)
-            return shared_secret
+            self.shared_secret = ec.mulp(self.params['a'], self.params['b'], 
+                self.params['p'], other_key, self.private_key)
         else:
             raise Exception("Invalid public key.")
 
 
-    def gen_key(self, private_key, other_key):
+    def gen_key(self):
         """
-        Derive the shared secret, then hash it to obtain the shared key.
+        Obtain shared key from shared secret.
         """
-        shared_secret = self.gen_secret(private_key, other_key)
         s = hashlib.sha256()
-        s.update(str(shared_secret))
+        s.update(str(self.shared_secret))
         return s.digest()
 
 
@@ -89,16 +86,17 @@ if __name__=="__main__":
  
     a = ECDH()
     b = ECDH()
+
+    a.gen_secret(b.public_key)
+    b.gen_secret(a.public_key)
  
-    key_a = a.gen_key(a.__private_key__, b.__public_key__)
-    key_b = b.gen_key(b.__private_key__, a.__public_key__)
+    key_a = a.gen_key()
+    key_b = b.gen_key()
  
     if(key_a == key_b):
         print "Shared keys match."
         print "Key:", hexlify(key_a)
     else:
         print "Shared secrets didn't match!"
-        print "Shared secret: ", a.gen_secret(a.__private_key__, 
-            b.__public_key__)
-        print "Shared secret: ", b.gen_secret(b.__private_key__, 
-            a.__public_key__)
+        print "Shared secret: ", a.shared_secret
+        print "Shared secret: ", b.shared_secret
