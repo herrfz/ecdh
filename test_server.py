@@ -5,15 +5,13 @@ import sys
 from binascii import hexlify
 from ECDiffieHellman import ECDH
 
-HOST = ''                 # Symbolic name meaning all available interfaces
-PORT = 50008              # Arbitrary non-privileged port
-multicast_group = '224.3.29.71'
-server_address = (multicast_group, PORT)
-sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-sock.bind(server_address)
+MCAST_GRP = '224.1.1.1'
+MCAST_PORT = 5007
 
-group = socket.inet_aton(multicast_group)
-mreq = struct.pack('4sL', group, socket.INADDR_ANY)
+sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+sock.bind(('', MCAST_PORT))
+mreq = struct.pack("4sl", socket.inet_aton(MCAST_GRP), socket.INADDR_ANY)
 sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
 
 while True:
