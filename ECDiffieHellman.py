@@ -1,3 +1,4 @@
+# requires Python >3.2
 import json
 import hashlib
 import elliptic as ec
@@ -7,13 +8,13 @@ from binascii import hexlify
 class ECDH(object):
     """
     An implementation of ECDH protocol.
-    This class uses parameters stored in the prime_file.
+    This class uses parameters stored in the curve_params file.
     """
-    def __init__(self, prime_file='ecp_256.txt', flip_sign=True):
+    def __init__(self, curve_params='ecp_256.txt', flip_sign=True):
         """
-        Generate the public and private keys.
+        Initialise, and generate the public and private keys.
         """
-        with open(prime_file) as f:
+        with open(curve_params) as f:
             self.params = json.load(f)
     
         for k in self.params:
@@ -72,10 +73,14 @@ class ECDH(object):
 
     def gen_key(self):
         """
-        Obtain shared key from shared secret.
+        Obtain key from shared secret. 
+        This is intended to be a pluggable module, 
+        e.g. to use other algorithm like HKDF
         """
         s = hashlib.sha256()
-        s.update(str(self.shared_secret))
+        secret_bytes = b''.join([x.to_bytes(length=32, byteorder='big') 
+            for x in self.shared_secret])
+        s.update(secret_bytes)
         return s.digest()
 
 
@@ -94,9 +99,9 @@ if __name__=="__main__":
     key_b = b.gen_key()
  
     if(key_a == key_b):
-        print "Shared keys match."
-        print "Key:", hexlify(key_a)
+        print("Shared keys match.")
+        print("Key:", hexlify(key_a))
     else:
-        print "Shared secrets didn't match!"
-        print "Shared secret: ", a.shared_secret
-        print "Shared secret: ", b.shared_secret
+        print("Shared secrets didn't match!")
+        print("Shared secret: ", a.shared_secret)
+        print("Shared secret: ", b.shared_secret)

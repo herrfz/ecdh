@@ -1,7 +1,6 @@
-# Echo server program
+# requires Python >3.2 due to more intuitive bytes handling
 import socket
-import time
-from bitarray import bitarray
+from binascii import hexlify
 from ECDiffieHellman import ECDH
 
 HOST = ''                 # Symbolic name meaning all available interfaces
@@ -13,25 +12,24 @@ while True:
     data, addr = sock.recvfrom(1024)
     if not data: break
 
-    ba = bitarray()
-    ba.frombytes(data)
-
-    other_key = tuple([int(x, 2) for x in [ba[:256].to01(), ba[256:].to01()]])
+    other_key = tuple([int.from_bytes(x, byteorder='big') 
+        for x in [data[:32], data[32:]]])
 
     dh = ECDH()
 
     if dh.check_public_key(other_key):
         dh.gen_private_key()
         dh.gen_public_key()
-        ser_pub_key = bitarray(''.join(['{0:0256b}'.format(x) 
-            for x in dh.public_key])).tobytes()    
+        ser_pub_key = b''.join([x.to_bytes(length=32, byteorder='big') 
+            for x in dh.public_key])
+
         sock.sendto(ser_pub_key, addr)
-        #time.sleep(3)  # simulate computation delay
+
         dh.gen_secret(other_key)
-        print dh.shared_secret
+        print(hexlify(dh.gen_key()))
 
     else:
-        sock.sendto('key error', addr)
-        print 'key error'
+        sock.sendto(bytes('key error', 'UTF-8'), addr)
+        print('key error')
 
 sock.close()
