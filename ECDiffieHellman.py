@@ -84,7 +84,7 @@ class ECDH(object):
         return s.digest()
 
 
-if __name__=="__main__":
+if __name__ == "__main__":
     """
     Run an example elliptic curve Diffie-Hellman exchange 
     """

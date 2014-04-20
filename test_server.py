@@ -17,7 +17,6 @@ sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
 while True:
     try:
         data, addr = sock.recvfrom(1024)
-        if not data: break
 
         other_key = tuple([int.from_bytes(x, byteorder='big') 
             for x in [data[:32], data[32:]]])
