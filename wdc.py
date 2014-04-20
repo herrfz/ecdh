@@ -44,23 +44,23 @@ class UDPMulticastHandler(threading.Thread):
         logging.info('UDP multicast is ready! [pid: {}]'.\
             format(os.getpid()))
         while not self.stopped:
-            data, addr = self.sock.recvfrom(1024)
+            key_data, addr = self.sock.recvfrom(1024)
 
-            other_key = tuple([int.from_bytes(x, byteorder='big') 
-                for x in [data[:32], data[32:]]])
+            other_key = tuple([int.from_bytes(x, byteorder='big')
+                for x in [key_data[:32], key_data[32:]]])
 
-            dh = ECDH()
+            ecdh = ECDH()
 
-            if dh.check_public_key(other_key):
-                dh.gen_private_key()
-                dh.gen_public_key()
-                ser_pub_key = b''.join([x.to_bytes(length=32, byteorder='big') 
-                    for x in dh.public_key])
+            if ecdh.check_public_key(other_key):
+                ecdh.gen_private_key()
+                ecdh.gen_public_key()
+                ser_pub_key = b''.join([x.to_bytes(length=32, byteorder='big')
+                    for x in ecdh.public_key])
 
                 self.sock.sendto(ser_pub_key, addr)
 
-                dh.gen_secret(other_key)
-                logging.info('key: {}'.format(hexlify(dh.gen_key())))
+                ecdh.gen_secret(other_key)
+                logging.info('key: {}'.format(hexlify(ecdh.gen_key())))
 
             else:
                 self.sock.sendto(bytes('key error', 'UTF-8'), addr)
@@ -74,7 +74,7 @@ def send_tcp_wdc_error(tcp_client_socket, error):
         tcp_client_socket.sendall(msg)
         logging.debug('sent {} Bytes to TCP client socket'.\
             format(len(msg)))
-    except(Exception, e):
+    except:
         logging.error('error sending TCP WDC_ERROR')
 
 
@@ -87,7 +87,7 @@ def send_udp_wdc_error(udp_client_socket, address, error):
         udp_client_socket.sendto(msg, address)
         logging.debug('sent {} Bytes to UDP client socket'.\
             format(len(msg)))
-    except(Exception, e):
+    except:
         logging.error('error sending UDP WDC_ERROR')
 
 
