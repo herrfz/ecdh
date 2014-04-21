@@ -67,24 +67,24 @@ class UDPMulticastHandler(threading.Thread):
                 logging.error('key error')
 
 
-def send_tcp_wdc_error(tcp_client_socket, error):
+def send_tcp_wdc_error(tcp_socket, error):
     msg = wdc_error
     msg[2] = error
     try:
-        tcp_client_socket.sendall(msg)
+        tcp_socket.sendall(msg)
         logging.debug('sent {} Bytes to TCP client socket'.\
             format(len(msg)))
     except:
         logging.error('error sending TCP WDC_ERROR')
 
 
-def send_udp_wdc_error(udp_client_socket, address, error):
-    '''call signature: send_udp_wdc_error(*udp_sock, msg)
+def send_udp_wdc_error(udp_socket, address, error):
+    '''call signature: send_udp_wdc_error(*srv_udp_sock, msg)
     '''
     msg = wdc_error
     msg[2] = error
     try:
-        udp_client_socket.sendto(msg, address)
+        udp_socket.sendto(msg, address)
         logging.debug('sent {} Bytes to UDP client socket'.\
             format(len(msg)))
     except:
@@ -173,10 +173,11 @@ if __name__ == '__main__':
                 # open UDP socket for sending data to server
                 try:
                     SERVER_IP = srv_address
-                    SERVER_UDP_PORT = 340001  # data[6]
-                    udp_sock = (socket.socket(socket.AF_INET,
-                        socket.SOCK_DGRAM, socket.IPPROTO_UDP),
-                    (SERVER_IP, SERVER_UDP_PORT))
+                    SERVER_UDP_PORT = 33401  # data[6]
+                    udp_sock = socket.socket(socket.AF_INET,
+                        socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+                    srv_udp_sock = (udp_sock, 
+                        (SERVER_IP, SERVER_UDP_PORT))
 
                 except:
                     logging.error('error opening UDP socket')
@@ -186,7 +187,7 @@ if __name__ == '__main__':
 
                 # TODO reply to server
 
-                # TODO start a thread to listen UDP multicast
+                # start a thread to listen UDP multicast
                 udphdlr = UDPMulticastHandler(udp_mcast_sock)
                 udphdlr.start()
 
@@ -196,25 +197,25 @@ if __name__ == '__main__':
 
             # WDC_DISCONNECTION_REQ
             elif data[1] == 0x03:
-                try:
-                    # stop UDP multicast thread
-                    udphdlr.stopped = True
-                    udp_mcast_sock.close()
+                if connected:
+                    try:
+                        # stop UDP multicast thread
+                        udphdlr.stopped = True
 
-                    # close UDP multicast socket
-                    udp_mcast_sock.close()
+                        # close UDP multicast socket
+                        udp_mcast_sock.close()
 
-                    # serial port stuffs skipped
+                        # serial port stuffs skipped
 
-                    # close UDP socket to send data to server
-                    udp_sock.close()
+                        # close UDP socket to send data to server
+                        srv_udp_sock[0].close()
 
-                    # send disconnect ack
-                    client_sock.sendall(wdc_disconnection_req_ack)
-                    logging.debug('sent wdc disconnection TODO')
+                        # send disconnect ack
+                        client_sock.sendall(wdc_disconnection_req_ack)
+                        logging.debug('sent wdc disconnection TODO')
 
-                except:
-                    logging.error('error sending wdc_disconnection_req_ack')
+                    except:
+                        logging.error('error sending disconnection ack')
 
                 connected = False
 
@@ -246,7 +247,7 @@ if __name__ == '__main__':
                             # serial port stuffs skipped
 
                             # close UDP socket to send data to server
-                            udp_sock.close()
+                            srv_udp_sock[0].close()
                             # close TCP socket
                             client_sock.close()
 
