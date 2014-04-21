@@ -66,6 +66,8 @@ class UDPMulticastHandler(threading.Thread):
                 self.sock.sendto(bytes('key error', 'UTF-8'), addr)
                 logging.error('key error')
 
+        logging.debug('UDP multicast thread is stopped')
+
 
 def send_tcp_wdc_error(tcp_socket, error):
     msg = wdc_error
@@ -176,7 +178,7 @@ if __name__ == '__main__':
                     SERVER_UDP_PORT = 33401  # data[6]
                     udp_sock = socket.socket(socket.AF_INET,
                         socket.SOCK_DGRAM, socket.IPPROTO_UDP)
-                    srv_udp_sock = (udp_sock, 
+                    srv_udp_sock = (udp_sock,
                         (SERVER_IP, SERVER_UDP_PORT))
 
                 except:
@@ -201,9 +203,8 @@ if __name__ == '__main__':
                     try:
                         # stop UDP multicast thread
                         udphdlr.stopped = True
-
-                        # close UDP multicast socket
-                        udp_mcast_sock.close()
+                        udphdlr.join(1)  # thread blocks at recvfrom(),
+                                         # join() had better be timed out
 
                         # serial port stuffs skipped
 
@@ -238,9 +239,12 @@ if __name__ == '__main__':
                     # serial port stuffs skipped
 
                     if data[1] == 0x09:
-                        # TODO stop UDP multicast thread
-
                         try:
+                            # stop UDP multicast thread
+                            udphdlr.stopped = True
+                            udphdlr.join(1)  # thread blocks at recvfrom(),
+                                             # join() had better be timed out
+
                             # close UDP multicast socket
                             udp_mcast_sock.close()
 
@@ -248,10 +252,12 @@ if __name__ == '__main__':
 
                             # close UDP socket to send data to server
                             srv_udp_sock[0].close()
+
                             # close TCP socket
                             client_sock.close()
 
-                            # reboot system
+                            # (supposedly) reboot system
+                            os._exit(0)
 
                         except:
                             logging.error('error resetting')
@@ -263,10 +269,13 @@ if __name__ == '__main__':
                 # serial port stuffs skipped
 
             client_sock.close()
-            #connected = False
 
 
-        except(KeyboardInterrupt):
+        except KeyboardInterrupt:
             udphdlr.stopped = True
+            udphdlr.join(1)  # thread blocks at recvfrom(),
+                             # join() had better be timed out
             tcp_sock.close()
+            udp_mcast_sock.close()
+            srv_udp_sock[0].close()
             os._exit(0)
