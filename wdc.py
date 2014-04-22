@@ -158,8 +158,9 @@ if __name__ == '__main__':
                     MCAST_GRP = '224.1.1.1'  # data[10]
                     udp_mcast_sock = socket.socket(socket.AF_INET,
                         socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+                    # on MAC OS X it's SO_REUSEPORT in place of SO_REUSEADDR
                     udp_mcast_sock.setsockopt(socket.SOL_SOCKET,
-                        socket.SO_REUSEPORT, 1)  # TODO for Linux
+                        socket.SO_REUSEADDR, 1)
                     udp_mcast_sock.bind(('', MCAST_PORT))
                     mreq = struct.pack("4sl", socket.inet_aton(MCAST_GRP),
                         socket.INADDR_ANY)
