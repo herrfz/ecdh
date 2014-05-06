@@ -18,19 +18,19 @@ WRONG_CMD = 0x03
 # messages
 # WDC_GET_STATUS_RES
 wdc_get_status_res = bytearray(64)
-wdc_get_status_res[0] = 10  # ??? TODO
+wdc_get_status_res[0] = 10  # len w/o the len field itself
 wdc_get_status_res[1] = 0x06
 # WDC_DISCONNECTION_REQ
 wdc_disconnection_req = bytearray(2)
-wdc_disconnection_req[0] = 1  # ??? TODO
+wdc_disconnection_req[0] = 1
 wdc_disconnection_req[1] = 0x03
 # WDC_DISCONNECTION_REQ_ACK
 wdc_disconnection_req_ack = bytearray(2)
-wdc_disconnection_req_ack[0] = 1  # ??? TODO
+wdc_disconnection_req_ack[0] = 1
 wdc_disconnection_req_ack[1] = 0x04
 # WDC_ERROR
 wdc_error = bytearray(3)
-wdc_error[0] = 2  # ?? TODO
+wdc_error[0] = 2
 wdc_error[1] = 0x00
 
 
@@ -273,10 +273,18 @@ if __name__ == '__main__':
 
 
         except KeyboardInterrupt:
-            udphdlr.stopped = True
-            udphdlr.join(1)  # thread blocks at recvfrom(),
-                             # join() had better be timed out
-            tcp_sock.close()
-            udp_mcast_sock.close()
-            srv_udp_sock[0].close()
+            if 'udphdlr' in globals():
+                udphdlr.stopped = True
+                udphdlr.join(1)  # thread blocks at recvfrom(),
+                                 # join() had better be timed out
+
+            if 'tcp_sock' in globals():
+                tcp_sock.close()
+
+            if 'udp_mcast_sock' in globals():
+                udp_mcast_sock.close()
+
+            if 'srv_udp_sock' in globals():
+                srv_udp_sock[0].close()
+
             os._exit(0)
