@@ -7,7 +7,7 @@ import threading
 from binascii import hexlify
 from ECDiffieHellman import ECDH
 
-TCP_PORT = 33400
+TCP_PORT = 33401
 TCP_RX_BUFFER_SIZE = 64
 UDP_RX_BUFFER_SIZE = 256
 
@@ -118,29 +118,28 @@ if __name__ == '__main__':
     logging.info('TCP receiving socket is ready! [pid: {}]'.\
             format(os.getpid()))
 
+    (client_sock, srv_address) = tcp_sock.accept()
+    logging.debug('accepted {}'.format(srv_address))
+
     while True:
-        # thread management, check stopping flags and stop threads if req'd
-
         try:
-            (client_sock, srv_address) = tcp_sock.accept()
-            logging.debug('accepted {}'.format(srv_address))
-
             data = client_sock.recv(TCP_RX_BUFFER_SIZE)
             logging.debug('received {} Bytes from TCP client socket'.\
                     format(len(data)))
+
+            if len(data) == 0:
+                raise KeyboardInterrupt
 
             # received length is not as stated in the data
             # (TODO, basically do input validation)
             if len(data) != data[0] + 1:
                 send_tcp_wdc_error(client_sock, WRONG_CMD)
-                client_sock.close()
                 continue
 
             # WDC_CONNECTION_REQ
-            if data[1] == 0x01:
+            elif data[1] == 0x01:
                 if connected:
                     send_tcp_wdc_error(client_sock, BUSY_CONNECTED)
-                    client_sock.close()
                     continue
 
                 # TODO
@@ -151,11 +150,20 @@ if __name__ == '__main__':
 
                 # WDC_CONNECTION_RES TODO
                 # seems to be taken from serialPortRxBuffer
+                wdc_connection_res = bytearray(10)
+                wdc_connection_res[0] = 9
+                wdc_connection_res[1] = 0x02
+                # fake response
+                wdc_connection_res[2:] = [0xde, 0xad, 0xbe, 0xef, 
+                                          0xde, 0xad, 0xbe, 0xef]
+                client_sock.sendall(wdc_connection_res)
+                logging.debug('sent wdc_connection_res')
 
                 # open UDP multicast socket for receiving data
                 try:
-                    MCAST_PORT = 5007  # data[8]
-                    MCAST_GRP = '224.1.1.1'  # data[10]
+                    MCAST_PORT = int.from_bytes(data[8:10], 
+                        byteorder='little')
+                    MCAST_GRP = data[10:-1].decode('ascii')
                     udp_mcast_sock = socket.socket(socket.AF_INET,
                         socket.SOCK_DGRAM, socket.IPPROTO_UDP)
                     # on MAC OS X it's SO_REUSEPORT in place of SO_REUSEADDR
@@ -170,13 +178,13 @@ if __name__ == '__main__':
                 except:
                     logging.error('error binding/joining UDP multicast')
                     send_tcp_wdc_error(client_sock, CONNECTING)
-                    client_sock.close()
                     continue
 
                 # open UDP socket for sending data to server
                 try:
                     SERVER_IP = srv_address
-                    SERVER_UDP_PORT = 33401  # data[6]
+                    SERVER_UDP_PORT = int.from_bytes(data[6:8], 
+                        byteorder='little')
                     udp_sock = socket.socket(socket.AF_INET,
                         socket.SOCK_DGRAM, socket.IPPROTO_UDP)
                     srv_udp_sock = (udp_sock,
@@ -185,7 +193,6 @@ if __name__ == '__main__':
                 except:
                     logging.error('error opening UDP socket')
                     send_tcp_wdc_error(client_sock, CONNECTING)
-                    client_sock.close()
                     continue
 
                 # TODO reply to server
@@ -225,15 +232,14 @@ if __name__ == '__main__':
             elif data[1] == 0x05:
                 wdc_get_status_res[2] = connected
 
-                # TODO send wdc_get_status_res
-
-                logging.debug('sent wdc status res TODO')
+                # send wdc_get_status_res
+                client_sock.sendall(wdc_get_status_res)
+                logging.debug('sent wdc status res')
 
             # WDC_SET_COOR_LONG_ADDR_REQ || WDC_RESET_REQ
             elif data[1] == 0x07 or data[1] == 0x09:
                 if connected:
                     send_tcp_wdc_error(client_sock, BUSY_CONNECTED)
-                    client_sock.close()
                     continue
 
                 else:
@@ -265,11 +271,8 @@ if __name__ == '__main__':
 
             else:
                 send_tcp_wdc_error(client_sock, WRONG_CMD)
-                client_sock.close()
                 continue
                 # serial port stuffs skipped
-
-            client_sock.close()
 
 
         except KeyboardInterrupt:
@@ -277,6 +280,9 @@ if __name__ == '__main__':
                 udphdlr.stopped = True
                 udphdlr.join(1)  # thread blocks at recvfrom(),
                                  # join() had better be timed out
+
+            if 'client_sock' in globals():
+                client_sock.close()
 
             if 'tcp_sock' in globals():
                 tcp_sock.close()
