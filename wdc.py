@@ -4,7 +4,8 @@ import struct
 import logging
 import argparse
 import threading
-from DummyHandler import SerialCmdHandler
+from CmdHandlers import SerialCmdHandler
+from CommAPIs import send_tcp
 
 TCP_PORT = 33401
 TCP_RX_BUFFER_SIZE = 64
@@ -46,32 +47,21 @@ wdc_reset_req_ack[0] = 1
 wdc_reset_req_ack[1] = 0x0a
 
 
-
-class UDPMulticastHandler(threading.Thread):
+class UDPMulticastListener(threading.Thread):
     def __init__(self, sock, srv_udp_sock):
-        threading.Thread.__init__(self)
+        threading.Thread.__init__(self, name='UDPMcast')
         self.stopped = False
         self.sock = sock
         self.srv_udp_sock = srv_udp_sock
-        logging.info('UDP multicast is ready! [pid: {}]'.\
-            format(os.getpid()))
+        logging.info('UDP multicast is ready!')
 
     def run(self):
         while not self.stopped:
             data, addr = self.sock.recvfrom(1024)
+            logging.debug('received {} bytes udp mcast'.\
+                format(len(data)))
             hdlr = SerialCmdHandler(data, self.srv_udp_sock)
             hdlr.start()
-
-
-def send_tcp_wdc_error(tcp_socket, error):
-    msg = wdc_error
-    msg[2] = error
-    try:
-        tcp_socket.sendall(msg)
-        logging.debug('sent {} Bytes to TCP client socket'.\
-            format(len(msg)))
-    except:
-        logging.error('error sending TCP WDC_ERROR')
 
 
 if __name__ == '__main__':
@@ -84,8 +74,10 @@ if __name__ == '__main__':
     LOGLEVEL = logging.DEBUG if args.VERBOSE else logging.INFO
     TCP_PORT = args.TCP_PORT
 
-    logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s',
+    logging.basicConfig(
+        format='%(asctime)s : %(levelname)s : %(threadName)s : %(message)s',
         level=LOGLEVEL)
+    logging.getLogger('wdclogger')
 
     connected = False
 
@@ -115,13 +107,19 @@ if __name__ == '__main__':
                 # received length is not as stated in the data
                 # (TODO, basically do input validation)
                 if len(data) != data[0] + 1:
-                    send_tcp_wdc_error(client_sock, WRONG_CMD)
+                    msg = wdc_error
+                    msg[2] = WRONG_CMD
+                    send_tcp(msg, client_sock,
+                        errmsg='error sending wrong cmd')
                     continue
 
                 # WDC_CONNECTION_REQ
                 elif data[1] == 0x01:
                     if connected:
-                        send_tcp_wdc_error(client_sock, BUSY_CONNECTED)
+                        msg = wdc_error
+                        msg[2] = BUSY_CONNECTED
+                        send_tcp(msg, client_sock,
+                            errmsg='error sending busy connected')
                         continue
 
                     wdc_get_status_res[0] = data[0] + 1
@@ -136,7 +134,8 @@ if __name__ == '__main__':
                         MCAST_GRP = data[10:-1].decode('ascii')
                         udp_mcast_sock = socket.socket(socket.AF_INET,
                             socket.SOCK_DGRAM, socket.IPPROTO_UDP)
-                        # on MAC OS X it's SO_REUSEPORT in place of SO_REUSEADDR
+                        # on MAC OS X it's SO_REUSEPORT 
+                        # in place of SO_REUSEADDR
                         udp_mcast_sock.setsockopt(socket.SOL_SOCKET,
                             socket.SO_REUSEADDR, 1)
                         udp_mcast_sock.bind(('', MCAST_PORT))
@@ -147,7 +146,10 @@ if __name__ == '__main__':
 
                     except:
                         logging.error('error binding/joining UDP multicast')
-                        send_tcp_wdc_error(client_sock, CONNECTING)
+                        msg = wdc_error
+                        msg[2] = CONNECTING
+                        send_tcp(msg, client_sock, 
+                            errmsg='error sending connecting error')
                         continue
 
                     # open UDP socket for sending data to server
@@ -162,18 +164,23 @@ if __name__ == '__main__':
 
                     except:
                         logging.error('error opening UDP socket')
-                        send_tcp_wdc_error(client_sock, CONNECTING)
+                        msg = wdc_error
+                        msg[2] = CONNECTING
+                        send_tcp(msg, client_sock, 
+                            errmsg='error sending connecting error')
                         continue
 
                     # fake response; 8 Byte coordnode long address
                     # should be taken from serial read, TODO
                     wdc_connection_res[2:] = [0xde, 0xad, 0xbe, 0xef, 
                                               0xde, 0xad, 0xbe, 0xef]
-                    client_sock.sendall(wdc_connection_res)
-                    logging.debug('sent wdc_connection_res')
+                    
+                    send_tcp(wdc_connection_res, client_sock,
+                        errmsg='error sending wdc conn res')
 
                     # start a thread to listen UDP multicast
-                    udphdlr = UDPMulticastHandler(udp_mcast_sock, srv_udp_sock)
+                    udphdlr = UDPMulticastListener(udp_mcast_sock, 
+                        srv_udp_sock)
                     udphdlr.start()
 
                     # serial thread skipped
@@ -197,8 +204,8 @@ if __name__ == '__main__':
                             # send disconnect on serial port TODO
 
                             # send disconnect ack
-                            client_sock.sendall(wdc_disconnection_req_ack)
-                            logging.debug('sent wdc disconnection ack')
+                            send_tcp(wdc_disconnection_req_ack, client_sock,
+                                errmsg='error sending disconnect ack')
 
                         except:
                             logging.error('error disconnecting')
@@ -209,36 +216,35 @@ if __name__ == '__main__':
                 elif data[1] == 0x05:
                     wdc_get_status_res[2] = connected
 
-                    try:
-                        # send wdc_get_status_res
-                        client_sock.sendall(wdc_get_status_res)
-                        logging.debug('sent wdc status res')
-                    except:
-                        logging.error('error sending wdc status res')
+                    # send wdc_get_status_res
+                    send_tcp(wdc_get_status_res, client_sock,
+                        errmsg='error sending status res')
 
                 # WDC_SET_COOR_LONG_ADDR_REQ || WDC_RESET_REQ
                 elif data[1] == 0x07 or data[1] == 0x09:
                     if connected:
-                        send_tcp_wdc_error(client_sock, BUSY_CONNECTED)
+                        msg = wdc_error
+                        msg[2] = BUSY_CONNECTED
+                        send_tcp(msg, client_sock,
+                            errmsg='error sending busy connected')
 
                     else:
                         # send command to serial TODO
                         # wait and read serial response TODO
 
-                        ack = wdc_set_coor_long_addr_req_ack if data[1] == 0x07\
-                        else wdc_reset_req_ack
+                        ack = wdc_set_coor_long_addr_req_ack\
+                        if data[1] == 0x07 else wdc_reset_req_ack
 
-                        try:
-                            client_sock.sendall(ack)
-                        except:
-                            logging.error('error sending ack (long addr/reset)')
+                        send_tcp(ack, client_sock,
+                            errmsg='error sending set longaddr/reset ack')
 
                         if data[1] == 0x09:
                             try:
                                 # stop UDP multicast thread
                                 udphdlr.stopped = True
-                                udphdlr.join(1)  # thread blocks at recvfrom(),
-                                                 # join() had better be timed out
+                                udphdlr.join(1)  
+                                # thread blocks at recvfrom(),
+                                # join() had better be timed out
 
                                 # close UDP multicast socket
                                 udp_mcast_sock.close()
@@ -258,15 +264,19 @@ if __name__ == '__main__':
                                 logging.error('error resetting')
 
                 else:
-                    send_tcp_wdc_error(client_sock, WRONG_CMD)
+                    msg = wdc_error
+                    msg[2] = WRONG_CMD
+                    send_tcp(msg, client_sock, 
+                        errmsg='error sending wrong cmd')
                     # serial port stuffs skipped
 
 
             except KeyboardInterrupt:
                 if 'udphdlr' in globals():
                     udphdlr.stopped = True
-                    udphdlr.join(1)  # thread blocks at recvfrom(),
-                                     # join() had better be timed out
+                    udphdlr.join(1)  
+                    # thread blocks at recvfrom(),
+                    # join() had better be timed out
 
                 if 'client_sock' in globals():
                     client_sock.close()

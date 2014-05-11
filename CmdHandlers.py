@@ -2,9 +2,9 @@ import logging
 import threading
 from binascii import hexlify
 from ECDiffieHellman import ECDH
+from CommAPIs import send_udp, dummy_write_serial, dummy_read_serial
 
 # for storing dummy status
-import pickle
 status_file = './status.pickle'
 
 # error codes
@@ -17,6 +17,7 @@ WRONG_CMD = 0x03
 wdc_error = bytearray(3)
 wdc_error[0] = 2
 wdc_error[1] = 0x00
+# wdc_error[2] depends on the error type
 
 # WDC_GET_TDMA_RES
 wdc_get_tdma_res = bytearray(24)
@@ -26,26 +27,14 @@ wdc_get_tdma_res[1] = 0x16
 # ACK
 ack = bytearray(2)
 ack[0] = 1
+# ack[1] depends on the ack type
 
-LOGLEVEL = logging.DEBUG
-logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s',
-    level=LOGLEVEL)
-
-
-def send_udp(msg, udp_socket, address):
-    '''call signature: send_udp_wdc_error(msg, *srv_udp_sock)
-    '''
-    try:
-        udp_socket.sendto(msg, address)
-        logging.debug('sent {} Bytes to UDP client socket'.\
-            format(len(msg)))
-    except:
-        logging.error('error sending UDP')
+logging.getLogger('wdclogger')
 
 
 class SerialCmdHandler(threading.Thread):
     def __init__(self, data, srv_udp_sock):
-        threading.Thread.__init__(self)
+        threading.Thread.__init__(self, name='Serial')
         self.data = data
         self.srv_udp_sock = srv_udp_sock
         self.running = False
@@ -71,10 +60,7 @@ class SerialCmdHandler(threading.Thread):
             wdc_get_tdma_res[2] = 0x01  # running
             wdc_get_tdma_res[3:] = data[2:]
 
-            # store status in dummy pickle file
-            with open(status_file, 'wb+') as f:
-                pickle.dump(wdc_get_tdma_res, f,
-                    pickle.HIGHEST_PROTOCOL)
+            dummy_write_serial(wdc_get_tdma_res, status_file)
 
             msg = ack
             msg[1] = 0x12  # START_TDMA_REQ_ACK
@@ -90,9 +76,7 @@ class SerialCmdHandler(threading.Thread):
         elif data[1] == 0x15:  # TDMA status
             logging.debug('sending TDMA status response')
 
-            # get status from dummy pickle file
-            with open(status_file, 'rb') as f:
-                wdc_get_tdma_res = pickle.load(f)
+            wdc_get_tdma_res = dummy_read_serial(status_file)
 
             msg = wdc_get_tdma_res
             send_udp(msg, *self.srv_udp_sock)
