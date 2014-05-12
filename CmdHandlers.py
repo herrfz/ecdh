@@ -2,7 +2,7 @@ import logging
 import threading
 from binascii import hexlify
 from ECDiffieHellman import ECDH
-from CommAPIs import send_udp, dummy_write_serial, dummy_read_serial
+from CommAPIs import send_udp, write_serial, read_serial
 
 # for storing dummy status
 status_file = './status.pickle'
@@ -33,6 +33,8 @@ logging.getLogger('wdclogger')
 
 
 class SerialCmdHandler(threading.Thread):
+    '''Dummy handler for serial commands
+    '''
     def __init__(self, data, srv_udp_sock):
         threading.Thread.__init__(self, name='Serial')
         self.data = data
@@ -60,7 +62,7 @@ class SerialCmdHandler(threading.Thread):
             wdc_get_tdma_res[2] = 0x01  # running
             wdc_get_tdma_res[3:] = data[2:]
 
-            dummy_write_serial(wdc_get_tdma_res, status_file)
+            write_serial(wdc_get_tdma_res, status_file)
 
             msg = ack
             msg[1] = 0x12  # START_TDMA_REQ_ACK
@@ -76,7 +78,7 @@ class SerialCmdHandler(threading.Thread):
         elif data[1] == 0x15:  # TDMA status
             logging.debug('sending TDMA status response')
 
-            wdc_get_tdma_res = dummy_read_serial(status_file)
+            wdc_get_tdma_res = read_serial(status_file)
 
             msg = wdc_get_tdma_res
             send_udp(msg, *self.srv_udp_sock)

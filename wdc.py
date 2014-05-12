@@ -291,6 +291,7 @@ if __name__ == '__main__':
                     srv_udp_sock[0].close()
 
                 os._exit(0)
+                #break
 
     except:
         pass
