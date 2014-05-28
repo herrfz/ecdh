@@ -44,11 +44,13 @@ class SerialCmdHandler(threading.Thread):
     def run(self):
         data = self.data
 
-        # this if hasn't been tested
+        # TODO: this "if" hasn't been tested
         if len(data) == 0 or len(data) != data[0] + 1:
             msg = wdc_error
             msg[2] = WRONG_CMD
             send_udp(msg, *(self.srv_udp_sock))
+            logging.error('bad command')
+            return
 
         if data[1] == 0x10:  # syn TDMA
             logging.debug('sync-ing WDC')
@@ -86,27 +88,42 @@ class SerialCmdHandler(threading.Thread):
         elif data[1] == 0x17:  # data request
             logging.debug('data request')
 
+            if data[2] in range(1, 9):  # key management messages
+                ## TEST TEST TEST TEST TODO
+                #params = data[3:196]
+                dap = data[3:]
+
+                if len(dap) != 64:
+                    logging.error('wrong public key length')
+                    return
+
+                other_key = tuple([int.from_bytes(x, byteorder='big')
+                    for x in [dap[:32], dap[32:]]])
+
+                ecdh = ECDH()
+
+                if ecdh.check_public_key(other_key):
+                    ecdh.gen_private_key()
+                    ecdh.gen_public_key()
+                    ser_pub_key = b''.join([x.to_bytes(length=32,
+                        byteorder='big') for x in ecdh.public_key])
+                    ecdh.gen_secret(other_key)
+
+                    send_udp(ser_pub_key, *(self.srv_udp_sock))
+
+                    logging.info('key: {}'.format(hexlify(ecdh.gen_key())))
+
+            elif data[2] in [0x09, 0x0A]:  # application unicast, broadcast
+                pass
+
+            else:
+                msg = wdc_error
+                msg[2] = WRONG_CMD
+                send_udp(msg, *(self.srv_udp_sock))
+                logging.error('wrong MAC_DATA_REQUEST mID')
+
         else:
             msg = wdc_error
             msg[2] = WRONG_CMD
             #send_udp(msg, *(self.srv_udp_sock))
             #logging.error('wrong command')
-
-            ## incomplete
-            key_data = data[2:]
-            other_key = tuple([int.from_bytes(x, byteorder='big')
-                for x in [key_data[:32], key_data[32:]]])
-
-            ecdh = ECDH()
-
-            if ecdh.check_public_key(other_key):
-                ecdh.gen_private_key()
-                ecdh.gen_public_key()
-                ser_pub_key = b''.join([x.to_bytes(length=32, byteorder='big')
-                    for x in ecdh.public_key])
-
-                #self.sock.sendto(ser_pub_key, addr)
-
-                ecdh.gen_secret(other_key)
-                logging.info('key: {}'.format(hexlify(ecdh.gen_key())))
-            
