@@ -86,7 +86,7 @@ class SerialCmdHandler(threading.Thread):
             send_udp(msg, *self.srv_udp_sock)
 
         elif data[1] == 0x17:  # data request
-            logging.debug('data request')
+            logging.debug('data request {}'.format(data))
 
             if data[2] in range(1, 9):  # key management messages
                 ## TEST TEST TEST TEST TODO
